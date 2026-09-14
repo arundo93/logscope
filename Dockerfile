@@ -33,7 +33,13 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 # Prisma CLI для применения миграций при старте
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+# Создаём симлинк .bin/prisma → prisma/build/index.js (как это делает npm).
+# Копировать .bin/prisma как обычный файл нельзя: тогда Prisma CLI ищет свои
+# wasm-файлы (prisma_schema_build_bg.wasm) в /app/node_modules/.bin/ и падает
+# с ENOENT. Симлинк заставляет Node.js резолвить реальный путь, и wasm
+# находится корректно в node_modules/@prisma/prisma-schema-wasm/.
+RUN mkdir -p /app/node_modules/.bin \
+    && ln -s /app/node_modules/prisma/build/index.js /app/node_modules/.bin/prisma
 
 # --- Хардненинг: запуск от непривилегированного пользователя ---
 # В node:alpine уже есть пользователь `node` (uid 1000). Отдаём ему владение
@@ -50,5 +56,7 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Применяем миграции и запускаем сервер
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+# Применяем миграции и запускаем сервер.
+# Prisma CLI вызываем напрямую через node (не через npx), чтобы гарантированно
+# использовать локальный бинарник и не зависеть от резолва npx.
+CMD ["sh", "-c", "node /app/node_modules/prisma/build/index.js migrate deploy && node server.js"]
