@@ -6,11 +6,11 @@
  * LogScopeService. Используется в серверных компонентах и serverActions.
  */
 
-import { LogScopeService } from "./service";
-import { UsersService } from "@/shared/services/usersService";
-import { SessionsService } from "@/shared/services/sessionsService";
 import { LogsService } from "@/shared/services/logsService";
+import { SessionsService } from "@/shared/services/sessionsService";
 import { TracesService } from "@/shared/services/tracesService";
+import { UsersService } from "@/shared/services/usersService";
+import { LogScopeService } from "./service";
 
 // Сервисы по таблицам (могут переиспользоваться другими сервисами).
 export const usersService = new UsersService();
@@ -20,10 +20,10 @@ export const tracesService = new TracesService();
 
 // Оркестратор для UI.
 export const logScopeService = new LogScopeService(
-  usersService,
-  sessionsService,
-  logsService,
-  tracesService,
+	usersService,
+	sessionsService,
+	logsService,
+	tracesService,
 );
 
 export type { LogScopeService } from "./service";

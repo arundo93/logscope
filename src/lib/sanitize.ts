@@ -11,19 +11,19 @@
 import { config } from "@/shared/config";
 
 const SECRET_KEY_PATTERN =
-  /(secret|token|authorization|auth|jwt|password|passwd|api[_-]?key|access[_-]?key|credential)/i;
+	/(secret|token|authorization|auth|jwt|password|passwd|api[_-]?key|access[_-]?key|credential)/i;
 
 const REDACTED = "[REDACTED]";
 
 const MAX_STRING_LENGTH = 4096;
 
 function isSecretKey(key: string): boolean {
-  return SECRET_KEY_PATTERN.test(key);
+	return SECRET_KEY_PATTERN.test(key);
 }
 
 function truncateString(value: string): string {
-  if (value.length <= MAX_STRING_LENGTH) return value;
-  return value.slice(0, MAX_STRING_LENGTH) + "…[truncated]";
+	if (value.length <= MAX_STRING_LENGTH) return value;
+	return `${value.slice(0, MAX_STRING_LENGTH)}…[truncated]`;
 }
 
 /**
@@ -33,37 +33,37 @@ function truncateString(value: string): string {
  *  - глубина ограничивается.
  */
 export function sanitizeValue(value: unknown, depth = 0, key = ""): unknown {
-  if (depth > config.openTelemetry.maxAttributesDepth) {
-    return "[depth-limit]";
-  }
+	if (depth > config.openTelemetry.maxAttributesDepth) {
+		return "[depth-limit]";
+	}
 
-  if (typeof value === "string") {
-    if (isSecretKey(key)) return REDACTED;
-    return truncateString(value);
-  }
+	if (typeof value === "string") {
+		if (isSecretKey(key)) return REDACTED;
+		return truncateString(value);
+	}
 
-  if (typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
+	if (typeof value === "number" || typeof value === "boolean") {
+		return value;
+	}
 
-  if (value === null || value === undefined) {
-    return value;
-  }
+	if (value === null || value === undefined) {
+		return value;
+	}
 
-  if (Array.isArray(value)) {
-    return value.map((item, i) =>
-      sanitizeValue(item, depth + 1, `${key}[${i}]`),
-    );
-  }
+	if (Array.isArray(value)) {
+		return value.map((item, i) =>
+			sanitizeValue(item, depth + 1, `${key}[${i}]`),
+		);
+	}
 
-  if (typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      result[k] = sanitizeValue(v, depth + 1, k);
-    }
-    return result;
-  }
+	if (typeof value === "object") {
+		const result: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+			result[k] = sanitizeValue(v, depth + 1, k);
+		}
+		return result;
+	}
 
-  // Функции, символы и прочее — не сериализуемо, заменяем строкой.
-  return String(value);
+	// Функции, символы и прочее — не сериализуемо, заменяем строкой.
+	return String(value);
 }

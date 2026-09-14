@@ -12,10 +12,10 @@ export const dynamic = "force-dynamic";
  * операций использует serverActions (src/services/logscope/action.ts).
  */
 export default async function LogsPage() {
-  const authorized = await logScopeService.isAuthorized();
-  if (!authorized) {
-    redirect("/login");
-  }
+	const authorized = await logScopeService.isAuthorized();
+	if (!authorized) {
+		redirect("/login");
+	}
 
-  return <LogsView />;
+	return <LogsView />;
 }

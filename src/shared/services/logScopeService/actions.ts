@@ -15,34 +15,34 @@ import type { LogsQuery, TracesQuery } from "./types";
 
 /** Вход по ключу доступа. */
 export async function loginAction(
-  accessKey: string,
+	accessKey: string,
 ): Promise<{ error?: string }> {
-  const result = await logScopeService.login(accessKey);
-  if (!result.ok) {
-    return { error: result.error };
-  }
-  revalidatePath("/logs");
-  redirect("/logs");
+	const result = await logScopeService.login(accessKey);
+	if (!result.ok) {
+		return { error: result.error };
+	}
+	revalidatePath("/logs");
+	redirect("/logs");
 }
 
 /** Выход. */
 export async function logoutAction(): Promise<void> {
-  await logScopeService.logout();
-  revalidatePath("/logs");
-  redirect("/login");
+	await logScopeService.logout();
+	revalidatePath("/logs");
+	redirect("/login");
 }
 
 /** Список логов (для клиентских компонентов). */
 export async function getLogsAction(query: LogsQuery) {
-  return logScopeService.getLogs(query);
+	return logScopeService.getLogs(query);
 }
 
 /** Список трейсов (для клиентских компонентов). */
 export async function getTracesAction(query: TracesQuery) {
-  return logScopeService.getTraces(query);
+	return logScopeService.getTraces(query);
 }
 
 /** Полный трейс (для клиентских компонентов). */
 export async function getTraceAction(traceId: string) {
-  return logScopeService.getTrace(traceId);
+	return logScopeService.getTrace(traceId);
 }

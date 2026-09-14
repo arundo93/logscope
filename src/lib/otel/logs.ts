@@ -18,20 +18,20 @@ import type { ExportLogsServiceRequest, OtlpLogRecord } from "./types";
 
 /** Запись лога в формате OTEL-модели (маппится на Prisma LogEntry). */
 export type OtelLogEntry = {
-  level: string;
-  severityNumber: number | null;
-  message: string;
-  additionals: Record<string, unknown> | null;
-  traceId: string | null;
-  spanId: string | null;
-  createdAt: Date | null;
+	level: string;
+	severityNumber: number | null;
+	message: string;
+	additionals: Record<string, unknown> | null;
+	traceId: string | null;
+	spanId: string | null;
+	createdAt: Date | null;
 };
 
 const MAX_MESSAGE_LENGTH = 4096;
 
 function truncate(value: string): string {
-  if (value.length <= MAX_MESSAGE_LENGTH) return value;
-  return value.slice(0, MAX_MESSAGE_LENGTH) + "…[truncated]";
+	if (value.length <= MAX_MESSAGE_LENGTH) return value;
+	return `${value.slice(0, MAX_MESSAGE_LENGTH)}…[truncated]`;
 }
 
 /**
@@ -39,20 +39,20 @@ function truncate(value: string): string {
  * а также примитивы (числа/булевы) — приводим к строке.
  */
 function bodyToString(body: OtlpLogRecord["body"]): string {
-  if (!body) return "";
-  if ("stringValue" in body && body.stringValue !== undefined) {
-    return body.stringValue;
-  }
-  if ("boolValue" in body && body.boolValue !== undefined) {
-    return String(body.boolValue);
-  }
-  if ("intValue" in body && body.intValue !== undefined) {
-    return body.intValue;
-  }
-  if ("doubleValue" in body && body.doubleValue !== undefined) {
-    return String(body.doubleValue);
-  }
-  return "";
+	if (!body) return "";
+	if ("stringValue" in body && body.stringValue !== undefined) {
+		return body.stringValue;
+	}
+	if ("boolValue" in body && body.boolValue !== undefined) {
+		return String(body.boolValue);
+	}
+	if ("intValue" in body && body.intValue !== undefined) {
+		return body.intValue;
+	}
+	if ("doubleValue" in body && body.doubleValue !== undefined) {
+		return String(body.doubleValue);
+	}
+	return "";
 }
 
 /**
@@ -60,32 +60,32 @@ function bodyToString(body: OtlpLogRecord["body"]): string {
  * значении.
  */
 function timeUnixNanoToDate(timeUnixNano: string | undefined): Date | null {
-  if (!timeUnixNano) return null;
-  const nanos = Number(timeUnixNano);
-  if (!Number.isFinite(nanos) || nanos <= 0) return null;
-  return new Date(nanos / 1_000_000);
+	if (!timeUnixNano) return null;
+	const nanos = Number(timeUnixNano);
+	if (!Number.isFinite(nanos) || nanos <= 0) return null;
+	return new Date(nanos / 1_000_000);
 }
 
 /**
  * Конвертирует один LogRecord в запись OTEL-модели.
  */
 export function convertLogRecord(record: OtlpLogRecord): OtelLogEntry {
-  const level = resolveLevel(record.severityText, record.severityNumber);
-  const message = truncate(bodyToString(record.body));
-  const additionals = attributesToObject(record.attributes);
-  const traceId = base64ToHex(record.traceId);
-  const spanId = base64ToHex(record.spanId);
-  const createdAt = timeUnixNanoToDate(record.timeUnixNano);
+	const level = resolveLevel(record.severityText, record.severityNumber);
+	const message = truncate(bodyToString(record.body));
+	const additionals = attributesToObject(record.attributes);
+	const traceId = base64ToHex(record.traceId);
+	const spanId = base64ToHex(record.spanId);
+	const createdAt = timeUnixNanoToDate(record.timeUnixNano);
 
-  return {
-    level,
-    severityNumber: record.severityNumber ?? null,
-    message,
-    additionals: Object.keys(additionals).length > 0 ? additionals : null,
-    traceId,
-    spanId,
-    createdAt,
-  };
+	return {
+		level,
+		severityNumber: record.severityNumber ?? null,
+		message,
+		additionals: Object.keys(additionals).length > 0 ? additionals : null,
+		traceId,
+		spanId,
+		createdAt,
+	};
 }
 
 /**
@@ -93,19 +93,19 @@ export function convertLogRecord(record: OtlpLogRecord): OtelLogEntry {
  * Пропускает записи без message (пустой Body).
  */
 export function convertLogsRequest(
-  request: ExportLogsServiceRequest,
+	request: ExportLogsServiceRequest,
 ): OtelLogEntry[] {
-  const entries: OtelLogEntry[] = [];
+	const entries: OtelLogEntry[] = [];
 
-  for (const resourceLogs of request.resourceLogs ?? []) {
-    for (const scopeLogs of resourceLogs.scopeLogs ?? []) {
-      for (const record of scopeLogs.logRecords ?? []) {
-        const entry = convertLogRecord(record);
-        if (!entry.message) continue;
-        entries.push(entry);
-      }
-    }
-  }
+	for (const resourceLogs of request.resourceLogs ?? []) {
+		for (const scopeLogs of resourceLogs.scopeLogs ?? []) {
+			for (const record of scopeLogs.logRecords ?? []) {
+				const entry = convertLogRecord(record);
+				if (!entry.message) continue;
+				entries.push(entry);
+			}
+		}
+	}
 
-  return entries;
+	return entries;
 }
