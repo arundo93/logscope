@@ -31,10 +31,23 @@ services:
     environment:
       # DOMAIN опционален:
       #   - пуст/не задан → доступ по IP, Caddy слушает :80 (HTTP, без TLS);
-      #   - задан (logs.example.com) → Caddy слушает 80/443 и получает TLS.
+      #   - задан (logscope.tech) → Caddy слушает 80/443 и использует
+      #     существующий Let's Encrypt сертификат из /etc/letsencrypt/live/<DOMAIN>.
       DOMAIN: ${DOMAIN:-}
+      # CADDY_SUFFIX выбирает Caddyfile:
+      #   - пуст → Caddyfile (домен, HTTPS);
+      #   - .ip  → Caddyfile.ip (доступ по IP, HTTP).
+      # Автоматически: если DOMAIN пуст → .ip, иначе пусто.
+      CADDY_SUFFIX: ${DOMAIN:+.ip}
     volumes:
-      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Выбираем Caddyfile в зависимости от режима (домен/IP).
+      - ./deploy/caddy/Caddyfile${CADDY_SUFFIX:-}:/etc/caddy/Caddyfile:ro
+      # Существующий Let's Encrypt сертификат монтируется в /certs (read-only).
+      # Caddyfile ссылается на него через директиву tls /certs/fullchain.pem /certs/privkey.pem.
+      # Сертификаты копируются в ${HOME}/logscope/certs (см. deploy.sh), т.к.
+      # /etc/letsencrypt/live недоступен rootless Docker-демону.
+      # Если DOMAIN пуст (доступ по IP) — монтирование не выполняется (путь пустой).
+      - ${HOME}/logscope/certs:/certs:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:

@@ -1,21 +1,15 @@
 # =============================================================================
-# Caddy — reverse proxy для Logscope (режим: ДОМЕН, HTTPS)
+# Caddy — reverse proxy для Logscope (режим: ДОСТУП ПО IP, HTTP)
 #
-# Используется, когда задан DOMAIN (например, logscope.tech). Caddy слушает
-# 80/443, использует существующий Let's Encrypt сертификат, смонтированный в
-# контейнер (см. docker-compose.prod.yml, volume /etc/letsencrypt/live/<DOMAIN>:/certs:ro),
-# редиректит HTTP → HTTPS и ставит HSTS.
+# Используется, когда DOMAIN не задан (пуст). Caddy слушает :80 по HTTP.
+# TLS не используется (Let's Encrypt не выдаёт сертификаты на IP-адреса),
+# HSTS не ставится (браузер закешировал бы его и блокировал HTTP).
 #
-# Для доступа по IP (без домена) используется отдельный файл Caddyfile.ip.
+# Для доступа по домену (HTTPS) используется отдельный файл Caddyfile.
 # Выбор файла — через env CADDY_SUFFIX в docker-compose.prod.yml.
 # =============================================================================
 
-{$DOMAIN} {
-	# --- TLS: используем существующий Let's Encrypt сертификат ---
-	# Файлы монтируются в контейнер из /etc/letsencrypt/live/<DOMAIN> (см.
-	# docker-compose.prod.yml). Caddy слушает 80/443 и редиректит HTTP → HTTPS.
-	tls /certs/fullchain.pem /certs/privkey.pem
-
+:80 {
 	# --- Глобальные security-заголовки ---
 	header {
 		# Запрет MIME-sniffing
@@ -30,8 +24,8 @@
 		-X-Robots-Tag "noindex, nofollow"
 		# Отключение автоопределения языка/гео
 		-X-Permitted-Cross-Domain-Policies "none"
-		# HSTS — безопасен, т.к. этот файл используется только при наличии домена (HTTPS).
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# HSTS НЕ ставим: доступ по HTTP, браузер закешировал бы HSTS и
+		# потом блокировал HTTP-доступ.
 	}
 
 	# --- Логирование доступа (JSON, в stdout) ---

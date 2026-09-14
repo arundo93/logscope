@@ -4,9 +4,10 @@
 #
 # Шаги:
 #   1. Проверяет наличие .env.production (секреты).
-#   2. Проверяет обязательные переменные (ACCESS_KEY, POSTGRES_PASSWORD,
-#      ALLOWED_ORIGINS). DOMAIN опционален: если пуст — доступ по IP (HTTP),
-#      если задан — доступ по домену (HTTPS).
+#   2. Проверяет обязательные переменные (POSTGRES_PASSWORD, ALLOWED_ORIGINS).
+#      ACCESS_KEY опционален: нужен ТОЛЬКО при первом запуске (создаёт первого
+#      пользователя), после этого его можно убрать из .env.production.
+#      DOMAIN опционален: если пуст — доступ по IP (HTTP), если задан — по домену (HTTPS).
 #   3. Собирает и запускает продакшен-стек (caddy + app + postgres).
 #   4. Показывает статус и подсказку по firewall.
 #
@@ -32,16 +33,61 @@ fi
 echo "==> Проверяем обязательные переменные"
 # shellcheck disable=SC1090
 source "${ENV_FILE}"
-: "${ACCESS_KEY:?ACCESS_KEY не задан в ${ENV_FILE}}"
+# ACCESS_KEY опционален: нужен только при первом запуске (создаёт первого
+# пользователя). После этого его можно убрать из .env.production.
 : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD не задан в ${ENV_FILE}}"
 : "${ALLOWED_ORIGINS:?ALLOWED_ORIGINS не задан в ${ENV_FILE}}"
 # DOMAIN опционален: пуст → доступ по IP (HTTP), задан → доступ по домену (HTTPS).
 
-echo "==> Проверяем, что ACCESS_KEY не содержит \$ (dotenv интерполирует)"
-if [[ "${ACCESS_KEY}" == *'$'* ]]; then
-  echo "ОШИБКА: ACCESS_KEY содержит символ \$. dotenv интерполирует \$VAR."
-  echo "Используйте только буквы и цифры (A-Za-z0-9)."
-  exit 1
+# Если задан DOMAIN — проверяем, что на сервере есть существующий
+# Let's Encrypt сертификат (Caddy использует его, а не получает сам).
+if [[ -n "${DOMAIN:-}" ]]; then
+  CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+  if [[ ! -f "${CERT_DIR}/fullchain.pem" || ! -f "${CERT_DIR}/privkey.pem" ]]; then
+    echo "ОШИБКА: не найден Let's Encrypt сертификат для ${DOMAIN}."
+    echo "Ожидаются файлы:"
+    echo "  ${CERT_DIR}/fullchain.pem"
+    echo "  ${CERT_DIR}/privkey.pem"
+    echo "Получите сертификат (например, через certbot) и повторите деплой."
+    exit 1
+  fi
+  echo "==> Найден Let's Encrypt сертификат для ${DOMAIN}"
+
+  # Копируем сертификаты из исходной директории certbot в ${HOME}/logscope/certs
+  # (доступно rootless Docker-демону). /etc/letsencrypt/live недоступен
+  # rootless Docker-демону, поэтому Caddy монтирует ${HOME}/logscope/certs
+  # (см. docker-compose.prod.yml).
+  #
+  # ВАЖНО: чтобы пользователь мог читать /etc/letsencrypt/live/<DOMAIN>,
+  # нужно ОДИН РАЗ выдать права (от root):
+  #   sudo chmod 755 /etc/letsencrypt /etc/letsencrypt/live /etc/letsencrypt/archive
+  #   sudo chmod 755 /etc/letsencrypt/live/${DOMAIN}
+  #   sudo chmod 644 /etc/letsencrypt/live/${DOMAIN}/fullchain.pem
+  #   sudo chmod 644 /etc/letsencrypt/live/${DOMAIN}/privkey.pem
+  CERTS_OUT="${HOME}/logscope/certs"
+  echo "==> Копируем сертификаты в ${CERTS_OUT}"
+  mkdir -p "${CERTS_OUT}"
+  if ! cp "${CERT_DIR}/fullchain.pem" "${CERTS_OUT}/fullchain.pem" 2>/dev/null; then
+    echo "ОШИБКА: не удалось прочитать ${CERT_DIR}/fullchain.pem."
+    echo "Выдайте права на чтение (от root):"
+    echo "  sudo chmod 755 /etc/letsencrypt /etc/letsencrypt/live /etc/letsencrypt/archive"
+    echo "  sudo chmod 755 ${CERT_DIR}"
+    echo "  sudo chmod 644 ${CERT_DIR}/fullchain.pem ${CERT_DIR}/privkey.pem"
+    exit 1
+  fi
+  cp "${CERT_DIR}/privkey.pem" "${CERTS_OUT}/privkey.pem"
+  chmod 644 "${CERTS_OUT}/fullchain.pem"
+  chmod 644 "${CERTS_OUT}/privkey.pem"
+fi
+
+# ACCESS_KEY опционален: проверяем на $ только если он задан.
+if [[ -n "${ACCESS_KEY:-}" ]]; then
+  echo "==> Проверяем, что ACCESS_KEY не содержит \$ (dotenv интерполирует)"
+  if [[ "${ACCESS_KEY}" == *'$'* ]]; then
+    echo "ОШИБКА: ACCESS_KEY содержит символ \$. dotenv интерполирует \$VAR."
+    echo "Используйте только буквы и цифры (A-Za-z0-9)."
+    exit 1
+  fi
 fi
 
 echo "==> Собираем и запускаем продакшен-стек"
