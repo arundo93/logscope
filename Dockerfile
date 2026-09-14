@@ -2,6 +2,12 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Ставим OpenSSL ДО npm install, чтобы Prisma определил версию libssl (3.0.x)
+# и скачал нативные движки под linux-musl-openssl-3.0.x. Иначе Prisma по
+# умолчанию выбирает openssl-1.1.x, а в Alpine 3.18+ нет libssl.so.1.1 — и
+# schema engine в рантайме падает ("Could not parse schema engine response").
+RUN apk add --no-cache openssl
+
 # Копируем манифесты зависимостей
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
@@ -19,6 +25,11 @@ RUN npm run build
 # --- Runtime stage ---
 FROM node:20-alpine AS runner
 WORKDIR /app
+
+# Prisma schema engine — нативный бинарник, которому нужен OpenSSL для работы.
+# Без него Prisma не может определить версию libssl и schema engine падает
+# ("Could not parse schema engine response"). Ставим OpenSSL в рантайм.
+RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
