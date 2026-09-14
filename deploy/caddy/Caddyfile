@@ -1,5 +1,5 @@
 # =============================================================================
-# Caddy — reverse proxy / rate limiting для Logscope
+# Caddy — reverse proxy для Logscope
 #
 # Единственная точка входа наружу. Всё остальное (app, postgres) живёт во
 # внутренних сетях docker и наружу не публикуется.
@@ -51,38 +51,6 @@
 	# --- Ограничение размера тела запроса (1 МБ, как в app) ---
 	request_body {
 		max_size 1MB
-	}
-
-	# --- Rate limiting ---
-	# OTLP-приём: жёсткий лимит на IP, чтобы защитить БД от перегрузки.
-	# /login: жёсткий лимит на IP, чтобы защитить от brute-force по ключу.
-	# Просмотр /logs: мягкий лимит, чтобы не мешать легитимной работе.
-	@otlp path /v1/logs /v1/traces
-	@login path /login
-	@logs path /logs*
-
-	rate_limit @otlp {
-		zone otlp_ingest
-		events 60
-		window 1m
-		key {remote_host}
-		reject_status 429
-	}
-
-	rate_limit @login {
-		zone login_bruteforce
-		events 10
-		window 1m
-		key {remote_host}
-		reject_status 429
-	}
-
-	rate_limit @logs {
-		zone logs_view
-		events 300
-		window 1m
-		key {remote_host}
-		reject_status 429
 	}
 
 	# --- Проксирование на app (внутренняя сеть docker) ---
