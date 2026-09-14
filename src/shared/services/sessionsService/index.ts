@@ -12,18 +12,9 @@ type CookieStore = Awaited<ReturnType<typeof cookies>>;
  * и cookie session_id.
  */
 export class SessionsService {
-
   /** Edge-safe: читает session_id из cookie запроса (для middleware). */
-  static getSessionIdFromRequest(
-    request: NextRequest,
-  ): string | undefined {
+  static getSessionIdFromRequest(request: NextRequest): string | undefined {
     return request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  }
-
-  private static getSessionTtlDays(): number {
-    const raw = process.env.SESSION_TTL_DAYS ?? "30";
-    const n = Number.parseInt(raw, 10);
-    return Number.isFinite(n) && n > 0 ? n : 30;
   }
 
   private static readSessionId(store: CookieStore): string | undefined {
@@ -141,8 +132,7 @@ export class SessionsService {
     userId: string,
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     const sessionId = randomUUID();
-    const ttlDays = SessionsService.getSessionTtlDays();
-    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     try {
       await this.create({

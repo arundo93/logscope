@@ -74,12 +74,6 @@ services:
       DATABASE_URL: postgresql://logscope:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/logscope
       ACCESS_KEY: ${ACCESS_KEY:?ACCESS_KEY is required}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
-      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-session_id}
-      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
-      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-1048576}
-      MAX_LOGS_PER_BATCH: ${MAX_LOGS_PER_BATCH:-200}
-      MAX_ADDITIONALS_BYTES: ${MAX_ADDITIONALS_BYTES:-65536}
-      MAX_ADDITIONALS_DEPTH: ${MAX_ADDITIONALS_DEPTH:-8}
     depends_on:
       postgres:
         condition: service_healthy
