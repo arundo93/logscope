@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Пользователь (владелец ключа доступа).
+/// В БД хранится ТОЛЬКО bcrypt-хеш ключа (accessKeyHash), сам ключ не хранится.
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  accessKeyHash String   @unique @map("access_key_hash") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  sessions Session[]
+
+  @@map("users")
+}
+
+/// Серверная сессия просмотра. Выдаётся в обмен на верный ключ доступа.
+model Session {
+  id          String   @id @default(uuid()) @db.Uuid
+  sessionId   String   @unique @map("session_id") @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  expiresAt   DateTime @map("expires_at") @db.Timestamp(6)
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamp(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Лог клиентского приложения. Не привязан к сессиям просмотра.
+model LogEntry {
+  id             BigInt   @id @default(autoincrement())
+  level          String   @db.VarChar(16)      // info|warn|error (из SeverityText)
+  severityNumber Int?     @map("severity_number") // OTEL SeverityNumber
+  message        String   @db.Text             // Body (string)
+  additionals    Json?    @default("{}") @db.JsonB // Attributes (флаттенить вложенные)
+  traceId        String?  @map("trace_id") @db.Text  // OTEL TraceId (hex)
+  spanId         String?  @map("span_id") @db.Text   // OTEL SpanId (hex)
+  clientLogId    String?  @map("client_log_id") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([level, createdAt(sort: Desc)])
+  @@index([traceId])
+  @@map("log_entries")
+}
+
+/// Агрегированная запись трейса (для быстрого списка трейсов в UI).
+/// Заполняется при приёме ExportTraceServiceRequest (одна запись на trace_id).
+model Trace {
+  id           BigInt   @id @default(autoincrement())
+  traceId      String   @map("trace_id") @db.Text
+  name         String   @db.Text            // имя корневого спана
+  spanCount    Int      @default(0) @map("span_count")
+  statusCode   Int?     @map("status_code") @db.SmallInt
+  startTime    DateTime @map("start_time") @db.Timestamp(6)
+  endTime      DateTime @map("end_time") @db.Timestamp(6)
+  durationMs   Float?   @map("duration_ms")
+  attributes   Json?    @default("{}") @db.JsonB
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@unique([traceId])
+  @@index([startTime(sort: Desc)])
+  @@map("traces")
+}
+
+/// Отдельный спан трейса (для waterfall-представления).
+model Span {
+  id            BigInt   @id @default(autoincrement())
+  traceId       String   @map("trace_id") @db.Text
+  spanId        String   @map("span_id") @db.Text
+  parentSpanId  String?  @map("parent_span_id") @db.Text
+  name          String   @db.Text
+  kind          Int      @default(1) @db.SmallInt  // OTEL SpanKind
+  statusCode    Int?     @map("status_code") @db.SmallInt // OTEL StatusCode
+  statusMessage String?  @map("status_message") @db.Text
+  startTime     DateTime @map("start_time") @db.Timestamp(6)
+  endTime       DateTime @map("end_time") @db.Timestamp(6)
+  durationMs    Float?   @map("duration_ms")
+  attributes    Json?    @default("{}") @db.JsonB
+  events        Json?    @default("[]") @db.JsonB  // SpanEvents
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@unique([traceId, spanId])
+  @@index([traceId])
+  @@index([parentSpanId])
+  @@index([startTime(sort: Desc)])
+  @@map("spans")
+}

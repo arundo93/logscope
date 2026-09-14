@@ -1,0 +1,51 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: logscope-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://logscope:logscope@postgres:5432/logscope
+      ACCESS_KEY: ${ACCESS_KEY:-change-me-please}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-session_id}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-1048576}
+      MAX_LOGS_PER_BATCH: ${MAX_LOGS_PER_BATCH:-200}
+      MAX_ADDITIONALS_BYTES: ${MAX_ADDITIONALS_BYTES:-65536}
+      MAX_ADDITIONALS_DEPTH: ${MAX_ADDITIONALS_DEPTH:-8}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logscope
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: logscope-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: logscope
+      POSTGRES_PASSWORD: logscope
+      POSTGRES_DB: logscope
+    ports:
+      - "5432:5432"
+    volumes:
+      - logscope-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logscope -d logscope"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - logscope
+
+networks:
+  logscope:
+    driver: bridge
+
+volumes:
+  logscope-data:

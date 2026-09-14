@@ -1,0 +1,97 @@
+# =============================================================================
+# Caddy — reverse proxy / rate limiting для Logscope
+#
+# Единственная точка входа наружу. Всё остальное (app, postgres) живёт во
+# внутренних сетях docker и наружу не публикуется.
+#
+# Два режима работы (задаётся через env DOMAIN в .env.production):
+#
+#   1. БЕЗ домена (доступ по IP) — DOMAIN пуст/не задан.
+#      Caddy слушает :80 по HTTP. TLS не используется (Let's Encrypt не выдаёт
+#      сертификаты на IP-адреса). HSTS не ставится.
+#
+#   2. С доменом — DOMAIN=logs.example.com.
+#      Caddy слушает 80/443, автоматически получает TLS-сертификат
+#      (Let's Encrypt / ZeroSSL) и редиректит HTTP → HTTPS.
+#      Для HSTS раскомментируйте блок ниже.
+# =============================================================================
+
+{$DOMAIN::80} {
+	# --- Глобальные security-заголовки ---
+	header {
+		# Запрет MIME-sniffing
+		-X-Content-Type-Options "nosniff"
+		# Защита от clickjacking
+		-X-Frame-Options "DENY"
+		# Строгая политика реферера
+		-Referrer-Policy "no-referrer"
+		# CSP: только собственные ресурсы, inline-стили разрешены (Next.js)
+		-Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self'"
+		# Запрет индексации
+		-X-Robots-Tag "noindex, nofollow"
+		# Отключение автоопределения языка/гео
+		-X-Permitted-Cross-Domain-Policies "none"
+	}
+
+	# HSTS (Strict-Transport-Security) — включается ТОЛЬКО при наличии домена
+	# (HTTPS). При доступе по IP (HTTP) HSTS ставить нельзя — браузер закеширует
+	# его и потом будет блокировать HTTP. Когда появится домен, раскомментируйте:
+	#
+	#   header {
+	#     Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	#   }
+
+	# --- Логирование доступа (JSON, в stdout) ---
+	log {
+		output stdout
+		format json
+		level info
+	}
+
+	# --- Ограничение размера тела запроса (1 МБ, как в app) ---
+	request_body {
+		max_size 1MB
+	}
+
+	# --- Rate limiting ---
+	# OTLP-приём: жёсткий лимит на IP, чтобы защитить БД от перегрузки.
+	# /login: жёсткий лимит на IP, чтобы защитить от brute-force по ключу.
+	# Просмотр /logs: мягкий лимит, чтобы не мешать легитимной работе.
+	@otlp path /v1/logs /v1/traces
+	@login path /login
+	@logs path /logs*
+
+	rate_limit @otlp {
+		zone otlp_ingest
+		events 60
+		window 1m
+		key {remote_host}
+		reject_status 429
+	}
+
+	rate_limit @login {
+		zone login_bruteforce
+		events 10
+		window 1m
+		key {remote_host}
+		reject_status 429
+	}
+
+	rate_limit @logs {
+		zone logs_view
+		events 300
+		window 1m
+		key {remote_host}
+		reject_status 429
+	}
+
+	# --- Проксирование на app (внутренняя сеть docker) ---
+	reverse_proxy app:3000 {
+		# Таймауты, чтобы защитить от медленных клиентов (slowloris)
+		transport http {
+			read_timeout 30s
+			write_timeout 30s
+			dial_timeout 5s
+		}
+	}
+}

@@ -4,7 +4,7 @@ node_modules/
 # --- Next.js ---
 .next/
 out/
-next-env.d.ts
+#next-env.d.ts
 
 # --- Сборка / типы ---
 *.tsbuildinfo
@@ -13,10 +13,7 @@ build/
 
 # --- Окружение ---
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
 
 # --- Prisma ---
 prisma/*.db

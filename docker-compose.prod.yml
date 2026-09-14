@@ -1,0 +1,162 @@
+# =============================================================================
+# Продакшен-окружение Logscope
+#
+# Отличия от dev docker-compose.yml:
+#   - Caddy (reverse proxy) — единственная точка входа наружу (80/443),
+#     TLS termination, rate limiting, security-заголовки.
+#   - app НЕ публикуется наружу (только во внутренней сети).
+#   - postgres НЕ публикуется наружу (порт 5432 не пробрасывается).
+#   - Сети разделены: public (caddy+app) и private (app+postgres).
+#     Caddy не имеет доступа к postgres.
+#   - Контейнеры харднены: non-root, read-only FS, cap_drop, ресурсные лимиты.
+#   - Секреты берутся из .env.production (не захардкожены).
+#
+# Запуск:
+#   cp .env.production.example .env.production
+#   # отредактировать DOMAIN, ACCESS_KEY, POSTGRES_PASSWORD, ALLOWED_ORIGINS
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# =============================================================================
+
+services:
+  # --- Reverse proxy / TLS / rate limit ---
+  caddy:
+    image: caddy:2-alpine
+    container_name: logscope-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # 443 публикуется всегда, но Caddy слушает его ТОЛЬКО если задан DOMAIN
+      # (иначе адрес сайта :80 — доступ по IP без TLS).
+      - "443:443"
+    environment:
+      # DOMAIN опционален:
+      #   - пуст/не задан → доступ по IP, Caddy слушает :80 (HTTP, без TLS);
+      #   - задан (logs.example.com) → Caddy слушает 80/443 и получает TLS.
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - public
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- Приложение (Next.js) ---
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: logscope-app
+    restart: unless-stopped
+    # НЕ публикуем порты наружу — доступ только через Caddy во внутренней сети.
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://logscope:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/logscope
+      ACCESS_KEY: ${ACCESS_KEY:?ACCESS_KEY is required}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-session_id}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-1048576}
+      MAX_LOGS_PER_BATCH: ${MAX_LOGS_PER_BATCH:-200}
+      MAX_ADDITIONALS_BYTES: ${MAX_ADDITIONALS_BYTES:-65536}
+      MAX_ADDITIONALS_DEPTH: ${MAX_ADDITIONALS_DEPTH:-8}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - public
+      - private
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # --- База данных (PostgreSQL) ---
+  postgres:
+    image: postgres:16-alpine
+    container_name: logscope-postgres
+    restart: unless-stopped
+    # Порт 5432 НЕ публикуется наружу — доступ только из приватной сети.
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: logscope
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: logscope
+    volumes:
+      - logscope-data:/var/lib/postgresql/data
+    networks:
+      - private
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logscope -d logscope"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+# --- Сети ---
+networks:
+  # Публичная: caddy + app. Caddy — единственный, кто смотрит наружу.
+  public:
+    driver: bridge
+  # Приватная: app + postgres. Сюда нет доступа извне и от caddy.
+  private:
+    driver: bridge
+    internal: true
+
+volumes:
+  logscope-data:
+  caddy-data:
+  caddy-config:
